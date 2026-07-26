@@ -95,6 +95,31 @@ def get_theme_qss(is_dark: bool) -> str:
                 background-color: #0E639C;
                 image: url("data:image/png;base64,{B64_CHECKMARK}");
             }}
+
+            QDialog, QMessageBox {{
+                background-color: #252526;
+                color: #CCCCCC;
+            }}
+            QMessageBox QLabel {{
+                background: transparent;
+                color: #FFFFFF;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 6px;
+            }}
+            QMessageBox QPushButton {{
+                background-color: #0E639C;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 5px;
+                padding: 6px 20px;
+                font-size: 13px;
+                font-weight: bold;
+                min-width: 60px;
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: #1177BB;
+            }}
         """
     else:
         return f"""
@@ -183,5 +208,30 @@ def get_theme_qss(is_dark: bool) -> str:
                 border: 2px solid #0969DA;
                 background-color: #0969DA;
                 image: url("data:image/png;base64,{B64_CHECKMARK}");
+            }}
+
+            QDialog, QMessageBox {{
+                background-color: #FFFFFF;
+                color: #24292F;
+            }}
+            QMessageBox QLabel {{
+                background: transparent;
+                color: #24292F;
+                font-size: 13px;
+                font-weight: bold;
+                padding: 6px;
+            }}
+            QMessageBox QPushButton {{
+                background-color: #0969DA;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 5px;
+                padding: 6px 20px;
+                font-size: 13px;
+                font-weight: bold;
+                min-width: 60px;
+            }}
+            QMessageBox QPushButton:hover {{
+                background-color: #0353E9;
             }}
         """

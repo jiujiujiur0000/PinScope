@@ -7,22 +7,115 @@ import sys
 import glob
 import re
 import threading
+import time
 
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QLabel, QPushButton, QComboBox, QCheckBox, QScrollArea,
-    QFrame, QGridLayout, QMessageBox, QGroupBox
+    QFrame, QGridLayout, QMessageBox, QGroupBox, QDialog
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt5.QtGui import QFont, QColor, QPalette
+from PyQt5.QtGui import QFont, QColor, QPalette, QPixmap, QPainter, QPainterPath, QPen
 
 from config import HAS_PYSERIAL, detect_system_is_dark
 from styles import get_theme_qss
-from widgets import PinCard
+from widgets import PinCard, WaveformDialog
 
 
 if HAS_PYSERIAL:
     import serial.tools.list_ports
+
+
+def create_straight_checkmark_pixmap(size=28, bg_color="#27AE60", check_color="#FFFFFF"):
+    """使用 QPainter 绘制绝对平直且带抗锯齿的几何勾号徽章"""
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    # 填充底色圆形
+    painter.setBrush(QColor(bg_color))
+    painter.setPen(Qt.NoPen)
+    painter.drawEllipse(0, 0, size, size)
+
+    # 绘制矢量平直勾号
+    pen = QPen(QColor(check_color), 2.4, Qt.SolidLine, Qt.SquareCap, Qt.MiterJoin)
+    painter.setPen(pen)
+
+    path = QPainterPath()
+    path.moveTo(7.5, 14.0)
+    path.lineTo(11.5, 18.0)
+    path.lineTo(20.0, 9.5)
+    painter.drawPath(path)
+    painter.end()
+    return pix
+
+
+class ModernMessageBox(QDialog):
+    """自适应深浅色主题的高颜值弹窗对话框"""
+    def __init__(self, title, message, is_dark_theme=True, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setFixedWidth(380)
+        self.setWindowFlags(self.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(22, 20, 22, 18)
+        layout.setSpacing(18)
+
+        content_layout = QHBoxLayout()
+        content_layout.setSpacing(14)
+
+        icon_lbl = QLabel()
+        icon_lbl.setFixedSize(28, 28)
+        icon_lbl.setPixmap(create_straight_checkmark_pixmap(28))
+        icon_lbl.setStyleSheet("background: transparent;")
+        content_layout.addWidget(icon_lbl)
+
+        text_lbl = QLabel(message)
+        text_lbl.setFont(QFont("Noto Sans CJK SC", 12, QFont.Bold))
+        text_lbl.setWordWrap(True)
+        text_lbl.setStyleSheet("background: transparent;")
+        content_layout.addWidget(text_lbl, 1)
+
+        layout.addLayout(content_layout)
+
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
+        btn_ok = QPushButton("确定")
+        btn_ok.setFixedSize(90, 32)
+        btn_ok.setFont(QFont("Noto Sans CJK SC", 10, QFont.Bold))
+        btn_ok.clicked.connect(self.accept)
+        btn_layout.addWidget(btn_ok)
+
+        layout.addLayout(btn_layout)
+
+        bg_color = "#252526" if is_dark_theme else "#FFFFFF"
+        text_color = "#E0E0E0" if is_dark_theme else "#24292F"
+        btn_bg = "#0E639C" if is_dark_theme else "#0969DA"
+        btn_hover = "#1177BB" if is_dark_theme else "#0353E9"
+        border_color = "#444444" if is_dark_theme else "#D0D7DE"
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {bg_color};
+                border: 1px solid {border_color};
+                border-radius: 8px;
+            }}
+            QLabel {{
+                color: {text_color};
+                background: transparent;
+            }}
+            QPushButton {{
+                background-color: {btn_bg};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 5px;
+            }}
+            QPushButton:hover {{
+                background-color: {btn_hover};
+            }}
+        """)
 
 
 class SignalBridge(QObject):
@@ -49,6 +142,10 @@ class PinScopeApp(QMainWindow):
         self.pin_latched = {p: False  for p in self.pin_names}
         self.pin_counts  = {p: 0     for p in self.pin_names}
         self.pin_cards   = {}
+
+        # 波形历史记录与时间戳
+        self.start_time = time.time()
+        self.pin_history = {p: [(self.start_time, 0)] for p in self.pin_names}
 
         # 默认勾选
         self.selected_pins = set()
@@ -98,9 +195,12 @@ class PinScopeApp(QMainWindow):
 
         self.baud_combo = QComboBox()
         self.baud_combo.addItems([
-            "115200", "9600", "19200", "38400", "57600",
+            "9600", "19200", "38400", "57600", "115200",
             "230400", "460800", "921600", "1500000", "2000000"
         ])
+        idx = self.baud_combo.findText("115200")
+        if idx >= 0:
+            self.baud_combo.setCurrentIndex(idx)
         self.baud_combo.setFixedWidth(115)
         self.baud_combo.setFixedHeight(36)
         self.baud_combo.currentIndexChanged.connect(self._on_baud_user_changed)
@@ -113,11 +213,17 @@ class PinScopeApp(QMainWindow):
         self.btn_connect.clicked.connect(self.toggle_connect)
         top_layout.addWidget(self.btn_connect)
 
-        self.btn_reset = QPushButton("重置清零所有记录")
+        self.btn_reset = QPushButton("清空跳变数据")
         self.btn_reset.setFont(QFont("Noto Sans CJK SC", 10, QFont.Bold))
         self.btn_reset.setFixedHeight(36)
         self.btn_reset.clicked.connect(self.reset_all)
         top_layout.addWidget(self.btn_reset)
+
+        self.btn_waveform = QPushButton("波形时序图")
+        self.btn_waveform.setFont(QFont("Noto Sans CJK SC", 10, QFont.Bold))
+        self.btn_waveform.setFixedHeight(36)
+        self.btn_waveform.clicked.connect(self.open_waveform_dialog)
+        top_layout.addWidget(self.btn_waveform)
 
         top_layout.addStretch()
 
@@ -295,6 +401,7 @@ class PinScopeApp(QMainWindow):
             self.btn_refresh_port.setStyleSheet("QPushButton { background:#3C3C3C; color:white; border:1px solid #555; border-radius:4px; padding:0 12px; } QPushButton:hover { background:#555; }")
             self.btn_connect.setStyleSheet("QPushButton { background:#0E639C; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#1177BB; }")
             self.btn_reset.setStyleSheet("QPushButton { background:#C0392B; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#E74C3C; }")
+            self.btn_waveform.setStyleSheet("QPushButton { background:#8E44AD; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#9B59B6; }")
             self.btn_demo.setStyleSheet("QPushButton { background:#27AE60; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#2ECC71; }")
             
             self.btn_select_all.setStyleSheet("QPushButton { background:#3C3C3C; color:white; border:none; border-radius:4px; } QPushButton:hover { background:#555; }")
@@ -318,6 +425,7 @@ class PinScopeApp(QMainWindow):
             self.btn_refresh_port.setStyleSheet("QPushButton { background:#F3F4F6; color:#24292F; border:1px solid #D0D7DE; border-radius:4px; padding:0 12px; } QPushButton:hover { background:#E5E7EB; }")
             self.btn_connect.setStyleSheet("QPushButton { background:#0969DA; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#0353E9; }")
             self.btn_reset.setStyleSheet("QPushButton { background:#CF222E; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#A40E26; }")
+            self.btn_waveform.setStyleSheet("QPushButton { background:#8250DF; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#6E40C9; }")
             self.btn_demo.setStyleSheet("QPushButton { background:#1A7F37; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#116327; }")
 
             self.btn_select_all.setStyleSheet("QPushButton { background:#F3F4F6; color:#24292F; border:1px solid #D0D7DE; border-radius:4px; } QPushButton:hover { background:#E5E7EB; }")
@@ -340,8 +448,13 @@ class PinScopeApp(QMainWindow):
         self._refresh_cards()
 
     def _set_all(self, val):
+        self.pin_list_widget.setUpdatesEnabled(False)
         for cb in self.checkboxes.values():
+            cb.blockSignals(True)
             cb.setChecked(val)
+            cb.blockSignals(False)
+        self.pin_list_widget.setUpdatesEnabled(True)
+        self._on_checkbox_changed()
 
     def _refresh_cards(self):
         for card in self.pin_cards.values():
@@ -360,10 +473,20 @@ class PinScopeApp(QMainWindow):
 
         cols = 3
         for idx, p in enumerate(pins):
-            card = PinCard(p, reset_callback=self.reset_single_pin, is_dark_theme=self.is_dark_theme)
+            card = PinCard(
+                p,
+                reset_callback=self.reset_single_pin,
+                pulse_callback=self.trigger_single_pulse,
+                is_dark_theme=self.is_dark_theme
+            )
             card.update_state(self.pin_levels[p], self.pin_latched[p], self.pin_counts[p])
             self.cards_grid.addWidget(card, idx // cols, idx % cols)
             self.pin_cards[p] = card
+
+    def trigger_single_pulse(self, pin_name):
+        if pin_name in self.pin_names:
+            self.bridge.pin_changed.emit(pin_name, 1)
+            QTimer.singleShot(300, lambda: self.bridge.pin_changed.emit(pin_name, 0))
 
     def _on_pin_changed(self, pin_name, level):
         if pin_name not in self.pin_names:
@@ -375,6 +498,7 @@ class PinScopeApp(QMainWindow):
         if prev != level:
             self.pin_latched[pin_name] = True
             self.pin_counts[pin_name] += 1
+            self.pin_history[pin_name].append((time.time(), level))
 
         if pin_name in self.pin_cards:
             self.pin_cards[pin_name].update_state(
@@ -386,21 +510,50 @@ class PinScopeApp(QMainWindow):
             self.pin_latched[pin_name] = False
             self.pin_counts[pin_name] = 0
             self.pin_levels[pin_name] = 0
+            self.pin_history[pin_name] = [(time.time(), 0)]
             if pin_name in self.pin_cards:
                 self.pin_cards[pin_name].reset()
 
     def reset_all(self):
+        now = time.time()
+        self.start_time = now
         for p in self.pin_names:
             self.pin_latched[p] = False
             self.pin_counts[p] = 0
             self.pin_levels[p] = 0
+            self.pin_history[p] = [(now, 0)]
         for card in self.pin_cards.values():
             card.reset()
-        QMessageBox.information(self, "重置成功", "所有引脚跳变锁存记录与计数器已清零！")
+        dialog = ModernMessageBox("重置成功", "所有引脚跳变锁存记录与计数器已清零！", is_dark_theme=self.is_dark_theme, parent=self)
+        dialog.exec_()
+
+    def get_waveform_data(self):
+        return self.selected_pins, self.pin_history, self.start_time
+
+    def clear_waveform_data(self):
+        now = time.time()
+        self.start_time = now
+        for p in self.pin_names:
+            self.pin_history[p] = [(now, self.pin_levels[p])]
+
+    def open_waveform_dialog(self):
+        if not hasattr(self, 'waveform_dialog') or self.waveform_dialog is None or not self.waveform_dialog.isVisible():
+            self.waveform_dialog = WaveformDialog(
+                self.get_waveform_data,
+                self.clear_waveform_data,
+                is_dark_theme=self.is_dark_theme,
+                parent=None
+            )
+            self.waveform_dialog.show()
+        else:
+            self.waveform_dialog.raise_()
+            self.waveform_dialog.activateWindow()
 
     def trigger_demo(self):
-        self.bridge.pin_changed.emit("PA2", 1)
-        QTimer.singleShot(300, lambda: self.bridge.pin_changed.emit("PA2", 0))
+        target_pins = list(self.selected_pins) if self.selected_pins else self.pin_names
+        for p in target_pins:
+            self.bridge.pin_changed.emit(p, 1)
+        QTimer.singleShot(300, lambda: [self.bridge.pin_changed.emit(p, 0) for p in target_pins])
 
     def toggle_connect(self):
         if not self.is_connected:
