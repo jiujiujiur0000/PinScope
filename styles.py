@@ -3,11 +3,12 @@
 PinScope v1.0 - QSS 主题与独立样式引擎 (styles.py)
 """
 
-from config import B64_CHECKMARK, B64_ARROW_WHITE, B64_ARROW_DARK
+from config import CHECKMARK_PATH, B64_ARROW_WHITE, B64_ARROW_DARK
 
 
 def get_theme_qss(is_dark: bool) -> str:
     """获取无缝融合且屏蔽白边焦点的 QSS 样式表"""
+    chk_url = CHECKMARK_PATH.replace("\\", "/")
     if is_dark:
         return f"""
             *:focus {{ outline: none; }}
@@ -69,9 +70,9 @@ def get_theme_qss(is_dark: bool) -> str:
             
             QCheckBox {{
                 color: #E0E0E0;
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: bold;
-                spacing: 6px;
+                spacing: 8px;
                 background: transparent;
                 border: none;
                 outline: none;
@@ -83,17 +84,23 @@ def get_theme_qss(is_dark: bool) -> str:
             QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #666666;
+                border: 1px solid #6E7681;
                 border-radius: 4px;
-                background-color: #2D2D30;
+                background-color: #161B22;
             }}
-            QCheckBox::indicator:focus {{
-                outline: none;
+            QCheckBox::indicator:hover {{
+                border: 1px solid #8B949E;
+                background-color: #21262D;
             }}
             QCheckBox::indicator:checked {{
-                border: 2px solid #0E639C;
-                background-color: #0E639C;
-                image: url("data:image/png;base64,{B64_CHECKMARK}");
+                border: 1px solid #1F6FEB;
+                border-radius: 4px;
+                background-color: #1F6FEB;
+                image: url("{chk_url}");
+            }}
+            QCheckBox::indicator:checked:hover {{
+                border: 1px solid #388BFD;
+                background-color: #388BFD;
             }}
 
             QDialog, QMessageBox {{
@@ -183,9 +190,9 @@ def get_theme_qss(is_dark: bool) -> str:
             
             QCheckBox {{
                 color: #24292F;
-                font-size: 12px;
+                font-size: 13px;
                 font-weight: bold;
-                spacing: 6px;
+                spacing: 8px;
                 background: transparent;
                 border: none;
                 outline: none;
@@ -197,17 +204,23 @@ def get_theme_qss(is_dark: bool) -> str:
             QCheckBox::indicator {{
                 width: 16px;
                 height: 16px;
-                border: 2px solid #8C959F;
+                border: 1px solid #D0D7DE;
                 border-radius: 4px;
                 background-color: #FFFFFF;
             }}
-            QCheckBox::indicator:focus {{
-                outline: none;
+            QCheckBox::indicator:hover {{
+                border: 1px solid #0969DA;
+                background-color: #F6F8FA;
             }}
             QCheckBox::indicator:checked {{
-                border: 2px solid #0969DA;
+                border: 1px solid #0969DA;
+                border-radius: 4px;
                 background-color: #0969DA;
-                image: url("data:image/png;base64,{B64_CHECKMARK}");
+                image: url("{chk_url}");
+            }}
+            QCheckBox::indicator:checked:hover {{
+                border: 1px solid #0353E9;
+                background-color: #0353E9;
             }}
 
             QDialog, QMessageBox {{
