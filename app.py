@@ -51,7 +51,7 @@ class PinScopeApp(QMainWindow):
         self.pin_cards   = {}
 
         # 默认勾选
-        self.selected_pins = {"PA2", "PB8", "PB9"}
+        self.selected_pins = set()
 
         # 信号桥
         self.bridge = SignalBridge()
