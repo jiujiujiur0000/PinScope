@@ -14,7 +14,7 @@ from PyQt5.QtWidgets import (
     QFrame, QGridLayout, QMessageBox, QGroupBox
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QColor, QPalette
 
 from config import HAS_PYSERIAL, detect_system_is_dark
 from styles import get_theme_qss
@@ -301,6 +301,14 @@ class PinScopeApp(QMainWindow):
             self.btn_clear_all.setStyleSheet("QPushButton { background:#3C3C3C; color:white; border:none; border-radius:4px; } QPushButton:hover { background:#555; }")
             self.pin_list_widget.setStyleSheet("background:#252526;")
             self.cards_widget.setStyleSheet("background:#1E1E1E;")
+            # 强制通过 QPalette 设置 viewport 背景色 —— 绕过 QSS 可能被 Fusion 引擎忽略的情况
+            pal = QPalette()
+            pal.setColor(QPalette.Window, QColor("#252526"))
+            pal.setColor(QPalette.Base, QColor("#252526"))
+            self.pin_scroll.viewport().setAutoFillBackground(True)
+            self.pin_scroll.viewport().setPalette(pal)
+            self.pin_scroll.setAutoFillBackground(True)
+            self.pin_scroll.setPalette(pal)
         else:
             self.top_frame.setStyleSheet("QFrame { background-color: #FFFFFF; border: 1px solid #D0D7DE; border-radius: 8px; }")
             self.lbl_port_tag.setStyleSheet("color: #24292F;")
@@ -316,6 +324,13 @@ class PinScopeApp(QMainWindow):
             self.btn_clear_all.setStyleSheet("QPushButton { background:#F3F4F6; color:#24292F; border:1px solid #D0D7DE; border-radius:4px; } QPushButton:hover { background:#E5E7EB; }")
             self.pin_list_widget.setStyleSheet("background:#FFFFFF;")
             self.cards_widget.setStyleSheet("background:#F6F8FA;")
+            pal = QPalette()
+            pal.setColor(QPalette.Window, QColor("#FFFFFF"))
+            pal.setColor(QPalette.Base, QColor("#FFFFFF"))
+            self.pin_scroll.viewport().setAutoFillBackground(True)
+            self.pin_scroll.viewport().setPalette(pal)
+            self.pin_scroll.setAutoFillBackground(True)
+            self.pin_scroll.setPalette(pal)
 
         for card in self.pin_cards.values():
             card.apply_theme(self.is_dark_theme)
