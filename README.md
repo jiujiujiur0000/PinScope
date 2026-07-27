@@ -40,7 +40,7 @@ int main(void)
     /* 硬件初始化... */
 
     /* USER CODE BEGIN 2 */
-    PinScope_Init(); // 初始化串口1 (115200bps, PA9-TX, PA10-RX) 与 SysTick 定时采样
+    PinScope_Init(); // 初始化串口 与 SysTick 定时采样
     /* USER CODE END 2 */
 }
 ```

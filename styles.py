@@ -3,12 +3,19 @@
 PinScope v1.0 - QSS 主题与独立样式引擎 (styles.py)
 """
 
-from config import CHECKMARK_PATH, B64_ARROW_WHITE, B64_ARROW_DARK
+from config import (
+    CHECKMARK_PATH, ARROW_WHITE_PATH, ARROW_DARK_PATH,
+    ARROW_UP_WHITE_PATH, ARROW_UP_DARK_PATH
+)
 
 
 def get_theme_qss(is_dark: bool) -> str:
     """获取无缝融合且屏蔽白边焦点的 QSS 样式表"""
     chk_url = CHECKMARK_PATH.replace("\\", "/")
+    arrow_w = ARROW_WHITE_PATH.replace("\\", "/")
+    arrow_d = ARROW_DARK_PATH.replace("\\", "/")
+    arrow_up_w = ARROW_UP_WHITE_PATH.replace("\\", "/")
+    arrow_up_d = ARROW_UP_DARK_PATH.replace("\\", "/")
     if is_dark:
         return f"""
             *:focus {{ outline: none; }}
@@ -33,10 +40,11 @@ def get_theme_qss(is_dark: bool) -> str:
             QScrollBar::handle:vertical {{ background: #555555; border-radius: 5px; }}
             
             QComboBox {{
+                combobox-popup: 0;
                 background-color: #3C3C3C;
                 border: 1px solid #555555;
                 border-radius: 5px;
-                padding: 4px 26px 4px 10px;
+                padding: 3px 20px 3px 8px;
                 color: #FFFFFF;
                 font-size: 13px;
                 font-weight: bold;
@@ -47,17 +55,29 @@ def get_theme_qss(is_dark: bool) -> str:
             }}
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 24px;
-                border-left-width: 0px;
-                border-top-right-radius: 5px;
-                border-bottom-right-radius: 5px;
+                subcontrol-position: center right;
+                width: 18px;
+                border: none;
                 background: transparent;
             }}
             QComboBox::down-arrow {{
-                image: url("data:image/png;base64,{B64_ARROW_WHITE}");
-                width: 12px;
-                height: 8px;
+                image: url("{arrow_w}");
+                width: 10px;
+                height: 6px;
+            }}
+            QComboBox:on::down-arrow {{
+                image: url("{arrow_up_w}");
+                width: 10px;
+                height: 6px;
+            }}
+            QComboBox QLineEdit {{
+                background: transparent;
+                color: #FFFFFF;
+                font-size: 13px;
+                font-weight: bold;
+                border: none;
+                padding: 0px;
+                margin: 0px;
             }}
             QComboBox QAbstractItemView {{
                 background-color: #252526;
@@ -152,10 +172,11 @@ def get_theme_qss(is_dark: bool) -> str:
             QScrollBar::handle:vertical {{ background: #D0D7DE; border-radius: 5px; }}
             
             QComboBox {{
+                combobox-popup: 0;
                 background-color: #FFFFFF;
                 border: 1px solid #D0D7DE;
                 border-radius: 5px;
-                padding: 4px 26px 4px 10px;
+                padding: 3px 20px 3px 8px;
                 color: #24292F;
                 font-size: 13px;
                 font-weight: bold;
@@ -166,22 +187,39 @@ def get_theme_qss(is_dark: bool) -> str:
             }}
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
-                subcontrol-position: top right;
-                width: 24px;
-                border-left-width: 0px;
-                border-top-right-radius: 5px;
-                border-bottom-right-radius: 5px;
+                subcontrol-position: center right;
+                width: 18px;
+                border: none;
                 background: transparent;
             }}
             QComboBox::down-arrow {{
-                image: url("data:image/png;base64,{B64_ARROW_DARK}");
-                width: 12px;
-                height: 8px;
+                image: url("{arrow_d}");
+                width: 10px;
+                height: 6px;
+            }}
+            QComboBox:on::down-arrow {{
+                image: url("{arrow_up_d}");
+                width: 10px;
+                height: 6px;
+            }}
+            QComboBox QLineEdit {{
+                background: transparent;
+                color: #24292F;
+                font-size: 13px;
+                font-weight: bold;
+                border: none;
+                padding: 0px;
+                margin: 0px;
             }}
             QComboBox QAbstractItemView {{
                 background-color: #FFFFFF;
                 color: #24292F;
                 font-size: 13px;
+                selection-background-color: #0969DA;
+                selection-color: #FFFFFF;
+                border: 1px solid #D0D7DE;
+                outline: none;
+            }}
                 selection-background-color: #0969DA;
                 selection-color: #FFFFFF;
                 border: 1px solid #D0D7DE;

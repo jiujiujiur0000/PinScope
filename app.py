@@ -12,10 +12,10 @@ import time
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QLabel, QPushButton, QComboBox, QCheckBox, QScrollArea,
-    QFrame, QGridLayout, QMessageBox, QGroupBox, QDialog
+    QFrame, QGridLayout, QMessageBox, QGroupBox, QDialog, QInputDialog
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt5.QtGui import QFont, QColor, QPalette, QPixmap, QPainter, QPainterPath, QPen
+from PyQt5.QtGui import QFont, QColor, QPalette, QPixmap, QPainter, QPainterPath, QPen, QIntValidator
 
 from config import HAS_PYSERIAL, detect_system_is_dark
 from styles import get_theme_qss
@@ -208,8 +208,9 @@ class PinScopeApp(QMainWindow):
         top_layout.addWidget(self.lbl_port_tag)
 
         self.port_combo = QComboBox()
-        self.port_combo.setFixedWidth(200)
+        self.port_combo.setFixedWidth(220)
         self.port_combo.setFixedHeight(36)
+        self.port_combo.setMaxVisibleItems(10)
         self.port_combo.currentIndexChanged.connect(self._on_port_changed)
         top_layout.addWidget(self.port_combo)
 
@@ -226,6 +227,8 @@ class PinScopeApp(QMainWindow):
         top_layout.addWidget(self.lbl_baud_tag)
 
         self.baud_combo = QComboBox()
+        self.baud_combo.setEditable(True)
+        self.baud_combo.setValidator(QIntValidator(1200, 4000000, self))
         self.baud_combo.addItems([
             "9600", "19200", "38400", "57600", "115200",
             "230400", "460800", "921600", "1500000", "2000000"
@@ -233,9 +236,10 @@ class PinScopeApp(QMainWindow):
         idx = self.baud_combo.findText("115200")
         if idx >= 0:
             self.baud_combo.setCurrentIndex(idx)
-        self.baud_combo.setFixedWidth(115)
+        self.baud_combo.setFixedWidth(110)
         self.baud_combo.setFixedHeight(36)
-        self.baud_combo.currentIndexChanged.connect(self._on_baud_user_changed)
+        self.baud_combo.setMaxVisibleItems(10)
+        self.baud_combo.editTextChanged.connect(self._on_baud_user_changed)
         top_layout.addWidget(self.baud_combo)
 
         top_layout.addSpacing(10)
@@ -266,7 +270,7 @@ class PinScopeApp(QMainWindow):
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["跟随系统", "深色模式", "浅色模式"])
-        self.theme_combo.setFixedWidth(145)
+        self.theme_combo.setFixedWidth(120)
         self.theme_combo.setFixedHeight(36)
         self.theme_combo.currentIndexChanged.connect(self._on_theme_combo_changed)
         top_layout.addWidget(self.theme_combo)
@@ -355,7 +359,7 @@ class PinScopeApp(QMainWindow):
         self._refresh_cards()
 
     def refresh_ports(self):
-        """自动侦测端口硬件并刷新列表"""
+        """自动侦测端口硬件并刷新列表（过滤 Linux 系统虚拟/空闲母板串口 ttyS*）"""
         self.is_changing_port = True
         self.port_combo.clear()
 
@@ -364,18 +368,24 @@ class PinScopeApp(QMainWindow):
             try:
                 comports = serial.tools.list_ports.comports()
                 for p in comports:
+                    # 过滤 Linux 系统默认预留的假串口 /dev/ttyS0 ~ ttyS31
+                    if re.search(r"ttyS\d+", p.device):
+                        continue
                     name_str = f"{p.device} ({p.description})" if p.description and p.description != "n/a" else p.device
                     port_list.append((p.device, name_str))
             except Exception:
                 pass
 
-        if not port_list:
-            raw_ports = glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
-            for r in raw_ports:
-                port_list.append((r, r))
+        # 补全常规 Linux USB 串口节点
+        usb_ports = glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
+        existing_devs = {dev for dev, _ in port_list}
+        for u in usb_ports:
+            if u not in existing_devs:
+                port_list.append((u, u))
 
-        if not port_list:
-            port_list = [("/dev/ttyUSB0", "/dev/ttyUSB0"), ("STDIN (标准输入)", "STDIN (标准输入)")]
+        # 增加标准输入模式选项
+        if ("STDIN (标准输入)", "STDIN (标准输入)") not in port_list:
+            port_list.append(("STDIN (标准输入)", "STDIN (标准输入)"))
 
         for dev, label in port_list:
             self.port_combo.addItem(label, userData=dev)
@@ -404,7 +414,7 @@ class PinScopeApp(QMainWindow):
             return
         current_dev = self.port_combo.currentData() or self.port_combo.currentText()
         new_baud = self.baud_combo.currentText()
-        if current_dev:
+        if current_dev and new_baud:
             self.user_custom_bauds[current_dev] = new_baud
 
     def _on_theme_combo_changed(self, idx):
@@ -622,7 +632,15 @@ class PinScopeApp(QMainWindow):
                     self.ser = serial.Serial(current_dev, baudrate=baud, timeout=0.1)
                     use_real_serial = True
                 except Exception as e:
-                    dialog = ModernMessageBox("连接失败", f"无法打开串口 {current_dev}:\n{e}", is_dark_theme=self.is_dark_theme, parent=self)
+                    err_msg = str(e)
+                    if "Permission" in err_msg or "13" in err_msg:
+                        tip = f"权限不足：无法访问 {current_dev}。\n请在终端执行：\nsudo chmod 666 {current_dev}"
+                    elif "Input/output error" in err_msg or "5" in err_msg or "ttyS" in current_dev:
+                        tip = f"选定的串口不可用或未连接物理硬件 ({current_dev})。\n请确认 USB转TTL 模块（如 CH340）已插入电脑并选择 /dev/ttyUSB0。"
+                    else:
+                        tip = f"无法打开串口 {current_dev}:\n{err_msg}"
+
+                    dialog = ModernMessageBox("连接失败", tip, icon_type="error", is_dark_theme=self.is_dark_theme, parent=self)
                     dialog.exec_()
                     self.ser = None
                     self.is_connected = False
