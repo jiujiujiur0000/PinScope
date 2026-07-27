@@ -56,19 +56,19 @@ def get_theme_qss(is_dark: bool) -> str:
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
                 subcontrol-position: center right;
-                width: 18px;
+                width: 20px;
                 border: none;
                 background: transparent;
             }}
             QComboBox::down-arrow {{
                 image: url("{arrow_w}");
-                width: 10px;
-                height: 6px;
+                width: 12px;
+                height: 8px;
             }}
-            QComboBox:on::down-arrow {{
+            QComboBox::drop-down:on QComboBox::down-arrow, QComboBox::down-arrow:on, QComboBox::down-arrow:open {{
                 image: url("{arrow_up_w}");
-                width: 10px;
-                height: 6px;
+                width: 12px;
+                height: 8px;
             }}
             QComboBox QLineEdit {{
                 background: transparent;
@@ -86,6 +86,11 @@ def get_theme_qss(is_dark: bool) -> str:
                 selection-background-color: #0E639C;
                 border: 1px solid #555555;
                 outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                padding-left: 8px;
+                padding-right: 8px;
+                min-height: 28px;
             }}
             
             QCheckBox {{
@@ -188,19 +193,19 @@ def get_theme_qss(is_dark: bool) -> str:
             QComboBox::drop-down {{
                 subcontrol-origin: padding;
                 subcontrol-position: center right;
-                width: 18px;
+                width: 20px;
                 border: none;
                 background: transparent;
             }}
             QComboBox::down-arrow {{
                 image: url("{arrow_d}");
-                width: 10px;
-                height: 6px;
+                width: 12px;
+                height: 8px;
             }}
-            QComboBox:on::down-arrow {{
+            QComboBox::drop-down:on QComboBox::down-arrow, QComboBox::down-arrow:on, QComboBox::down-arrow:open {{
                 image: url("{arrow_up_d}");
-                width: 10px;
-                height: 6px;
+                width: 12px;
+                height: 8px;
             }}
             QComboBox QLineEdit {{
                 background: transparent;
@@ -219,6 +224,11 @@ def get_theme_qss(is_dark: bool) -> str:
                 selection-color: #FFFFFF;
                 border: 1px solid #D0D7DE;
                 outline: none;
+            }}
+            QComboBox QAbstractItemView::item {{
+                padding-left: 8px;
+                padding-right: 8px;
+                min-height: 28px;
             }}
                 selection-background-color: #0969DA;
                 selection-color: #FFFFFF;

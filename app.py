@@ -270,7 +270,7 @@ class PinScopeApp(QMainWindow):
 
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["跟随系统", "深色模式", "浅色模式"])
-        self.theme_combo.setFixedWidth(120)
+        self.theme_combo.setFixedWidth(102)
         self.theme_combo.setFixedHeight(36)
         self.theme_combo.currentIndexChanged.connect(self._on_theme_combo_changed)
         top_layout.addWidget(self.theme_combo)
