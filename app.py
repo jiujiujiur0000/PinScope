@@ -23,6 +23,7 @@ from widgets import PinCard, WaveformDialog
 
 
 if HAS_PYSERIAL:
+    import serial
     import serial.tools.list_ports
 
 
@@ -51,9 +52,33 @@ def create_straight_checkmark_pixmap(size=28, bg_color="#27AE60", check_color="#
     return pix
 
 
+def create_exclamation_pixmap(size=28, bg_color="#E67E22", fg_color="#FFFFFF"):
+    """使用 QPainter 绘制带平滑抗锯齿的感叹号警告徽章"""
+    pix = QPixmap(size, size)
+    pix.fill(Qt.transparent)
+    painter = QPainter(pix)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+
+    # 填充底色圆形
+    painter.setBrush(QColor(bg_color))
+    painter.setPen(Qt.NoPen)
+    painter.drawEllipse(0, 0, size, size)
+
+    # 绘制感叹号
+    pen = QPen(QColor(fg_color), 2.8, Qt.SolidLine, Qt.RoundCap)
+    painter.setPen(pen)
+    painter.drawLine(size // 2, int(size * 0.25), size // 2, int(size * 0.55))
+
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(QColor(fg_color))
+    painter.drawEllipse(size // 2 - 2, int(size * 0.68), 4, 4)
+    painter.end()
+    return pix
+
+
 class ModernMessageBox(QDialog):
     """自适应深浅色主题的高颜值弹窗对话框"""
-    def __init__(self, title, message, is_dark_theme=True, parent=None):
+    def __init__(self, title, message, icon_type="warning", is_dark_theme=True, parent=None):
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setFixedWidth(380)
@@ -68,7 +93,12 @@ class ModernMessageBox(QDialog):
 
         icon_lbl = QLabel()
         icon_lbl.setFixedSize(28, 28)
-        icon_lbl.setPixmap(create_straight_checkmark_pixmap(28))
+        if icon_type == "success" or "成功" in title:
+            icon_lbl.setPixmap(create_straight_checkmark_pixmap(28))
+        elif icon_type == "error" or "失败" in title:
+            icon_lbl.setPixmap(create_exclamation_pixmap(28, bg_color="#C0392B"))
+        else:
+            icon_lbl.setPixmap(create_exclamation_pixmap(28, bg_color="#E67E22"))
         icon_lbl.setStyleSheet("background: transparent;")
         content_layout.addWidget(icon_lbl)
 
@@ -154,7 +184,9 @@ class PinScopeApp(QMainWindow):
         self.bridge = SignalBridge()
         self.bridge.pin_changed.connect(self._on_pin_changed)
 
+        self.ser = None
         self.is_connected = False
+        self.pulse_response_received = False
         self._build_ui()
         self.apply_theme_mode()
 
@@ -239,7 +271,7 @@ class PinScopeApp(QMainWindow):
         self.theme_combo.currentIndexChanged.connect(self._on_theme_combo_changed)
         top_layout.addWidget(self.theme_combo)
 
-        self.btn_demo = QPushButton("模拟脉冲测试")
+        self.btn_demo = QPushButton("批量脉冲")
         self.btn_demo.setFont(QFont("Noto Sans CJK SC", 10, QFont.Bold))
         self.btn_demo.setFixedHeight(36)
         self.btn_demo.clicked.connect(self.trigger_demo)
@@ -483,10 +515,24 @@ class PinScopeApp(QMainWindow):
             self.cards_grid.addWidget(card, idx // cols, idx % cols)
             self.pin_cards[p] = card
 
+    def send_command(self, cmd_str):
+        if self.is_connected and hasattr(self, 'ser') and self.ser and getattr(self.ser, 'is_open', False):
+            try:
+                if not cmd_str.endswith('\n'):
+                    cmd_str += '\n'
+                self.ser.write(cmd_str.encode('utf-8'))
+            except Exception as e:
+                print(f"串口发送错误: {e}")
+
     def trigger_single_pulse(self, pin_name):
         if pin_name in self.pin_names:
-            self.bridge.pin_changed.emit(pin_name, 1)
-            QTimer.singleShot(300, lambda: self.bridge.pin_changed.emit(pin_name, 0))
+            if self.is_connected and hasattr(self, 'ser') and self.ser and getattr(self.ser, 'is_open', False):
+                self.pulse_response_received = False
+                self.send_command(f"PULSE:{pin_name}\n")
+                QTimer.singleShot(100, lambda: self._check_pulse_response(pin_name))
+            else:
+                dialog = ModernMessageBox("串口未连接", "请先连接串口。", is_dark_theme=self.is_dark_theme, parent=self)
+                dialog.exec_()
 
     def _on_pin_changed(self, pin_name, level):
         if pin_name not in self.pin_names:
@@ -550,28 +596,94 @@ class PinScopeApp(QMainWindow):
             self.waveform_dialog.activateWindow()
 
     def trigger_demo(self):
+        if not (self.is_connected and hasattr(self, 'ser') and self.ser and getattr(self.ser, 'is_open', False)):
+            dialog = ModernMessageBox("串口未连接", "请先连接串口。", is_dark_theme=self.is_dark_theme, parent=self)
+            dialog.exec_()
+            return
+        self.pulse_response_received = False
         target_pins = list(self.selected_pins) if self.selected_pins else self.pin_names
         for p in target_pins:
-            self.bridge.pin_changed.emit(p, 1)
-        QTimer.singleShot(300, lambda: [self.bridge.pin_changed.emit(p, 0) for p in target_pins])
+            self.send_command(f"PULSE:{p}\n")
+        QTimer.singleShot(100, lambda: self._check_pulse_response("目标引脚"))
 
     def toggle_connect(self):
         if not self.is_connected:
+            current_dev = self.port_combo.currentData() or self.port_combo.currentText()
+            baud_str = self.baud_combo.currentText()
+            try:
+                baud = int(baud_str)
+            except ValueError:
+                baud = 115200
+
+            use_real_serial = False
+            if current_dev and current_dev != "STDIN (标准输入)":
+                try:
+                    import serial
+                    self.ser = serial.Serial(current_dev, baudrate=baud, timeout=0.1)
+                    use_real_serial = True
+                except Exception as e:
+                    dialog = ModernMessageBox("连接失败", f"无法打开串口 {current_dev}:\n{e}", is_dark_theme=self.is_dark_theme, parent=self)
+                    dialog.exec_()
+                    self.ser = None
+                    self.is_connected = False
+                    return
+
             self.is_connected = True
             self.btn_connect.setText("断开连接")
             if self.is_dark_theme:
                 self.btn_connect.setStyleSheet("QPushButton { background:#C0392B; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#E74C3C; }")
             else:
                 self.btn_connect.setStyleSheet("QPushButton { background:#CF222E; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#A40E26; }")
-            t = threading.Thread(target=self._listen_stdin, daemon=True)
-            t.start()
+
+            if use_real_serial and self.ser:
+                t = threading.Thread(target=self._listen_serial, daemon=True)
+                t.start()
+            else:
+                t = threading.Thread(target=self._listen_stdin, daemon=True)
+                t.start()
         else:
             self.is_connected = False
+            if hasattr(self, 'ser') and self.ser:
+                try:
+                    self.ser.close()
+                except Exception:
+                    pass
+                self.ser = None
             self.btn_connect.setText("连接串口")
             if self.is_dark_theme:
                 self.btn_connect.setStyleSheet("QPushButton { background:#0E639C; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#1177BB; }")
             else:
                 self.btn_connect.setStyleSheet("QPushButton { background:#0969DA; color:white; border:none; border-radius:5px; padding: 0 16px; } QPushButton:hover { background:#0353E9; }")
+
+    def _listen_serial(self):
+        pattern_hex = re.compile(r"0x([0-9a-fA-F]{4})")
+        pattern_pin = re.compile(r"P([AB])(\d+):\s*([01])")
+
+        while self.is_connected and hasattr(self, 'ser') and self.ser and getattr(self.ser, 'is_open', False):
+            try:
+                line_bytes = self.ser.readline()
+                if not line_bytes:
+                    continue
+                line = line_bytes.decode('utf-8', errors='ignore').strip()
+                if not line:
+                    continue
+
+                self.pulse_response_received = True
+
+                if "PONG" in line:
+                    continue
+
+                m_hex = pattern_hex.search(line)
+                if m_hex:
+                    val = int(m_hex.group(1), 16)
+                    for b in range(16):
+                        self.bridge.pin_changed.emit(f"PA{b}", (val >> b) & 1)
+                    continue
+
+                for port, num, val in pattern_pin.findall(line):
+                    self.bridge.pin_changed.emit(f"P{port}{num}", int(val))
+            except Exception:
+                time.sleep(0.02)
 
     def _listen_stdin(self):
         pattern_hex = re.compile(r"0x([0-9a-fA-F]{4})")
@@ -590,3 +702,9 @@ class PinScopeApp(QMainWindow):
 
             for port, num, val in pattern_pin.findall(line):
                 self.bridge.pin_changed.emit(f"P{port}{num}", int(val))
+
+    def _check_pulse_response(self, target_name):
+        if self.is_connected and not self.pulse_response_received:
+            msg = f"对 {target_name} 发送脉冲指令后未收到单片机响应！\n\n请检查：\n1. STM32 main.c 中是否调用了 PinScope_Init();\n2. 串口 TX/RX 杜邦线是否接反 (TX接RX, RX接TX)。"
+            dialog = ModernMessageBox("未收到单片机响应", msg, is_dark_theme=self.is_dark_theme, parent=self)
+            dialog.exec_()
